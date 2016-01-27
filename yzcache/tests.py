@@ -61,9 +61,12 @@ class CacheTest(unittest.TestCase):
 
         @cached_function
         def f2():
+            """Test docs"""
             return 10
 
         self.assertEqual(f2.__name__, 'f2')
+        self.assertEqual(f2.__doc__, "Test docs")
+        self.assertEqual(f2.__module__, __name__)
         self.assertEqual(f2(), 10)
 
     def test_callargs(self):
@@ -84,10 +87,29 @@ class CacheTest(unittest.TestCase):
             def get_x(self):
                 return self.x
 
+            @cached_function
+            @staticmethod
+            def get_static_x():
+                return A.x
+
+        class B(A):
+            x = 10
+
         a = A(15)
         args = a.get_x._make_args()
         self.assertEqual(args, {'self': a})
         self.assertEqual(a.get_x._make_key(args), 'yzcache.tests.A.get_x(self={!r})'.format(a))
+
+        d = a.get_static_x
+        args = d._make_args()
+
+        self.assertEqual(a.get_static_x._make_key(args), 'yzcache.tests.A.get_static_x()')
+
+        d = B.get_static_x
+        assert d == A.__dict__['get_static_x']
+        print "Data: ", d._method, d.__self__, d.im_class, A.__dict__['get_static_x']
+        args = d._make_args()
+        self.assertEqual(B.get_static_x._make_key(args), 'yzcache.tests.A.get_static_x()')
 
     def test_cached_method(self):
         class A(object):
@@ -105,6 +127,11 @@ class CacheTest(unittest.TestCase):
             def get_class_x(cls):
                 return cls.x
 
+            @cached_function
+            @staticmethod
+            def get_static_x():
+                return A.x
+
             def outside(self, a, b=5):
                 return self.x + a + b
 
@@ -115,6 +142,13 @@ class CacheTest(unittest.TestCase):
         self.assertEqual(a.get_x(), 15)
         self.assertEqual(a.get_class_x(), 9)
         self.assertEqual(B.get_class_x(), 8)
+
+        with self.assertRaises(TypeError):
+            A.get_x()
+
+        self.assertEqual(a.get_static_x(), A.x)
+        self.assertEqual(A.get_static_x(), A.x)
+        self.assertEqual(B.get_static_x(), A.x)
 
         outside = cached_function(a.outside)
         self.assertEqual(outside(1), 21)

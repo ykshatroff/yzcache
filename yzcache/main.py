@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 # Date: 22.11.15
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 import copy
 import weakref
-from inspect import getcallargs, ismethod, isclass
+from inspect import getcallargs, ismethod, isclass, isfunction, isgeneratorfunction
 from yzcache.keys import get_qualname
 
 cache = weakref.WeakValueDictionary()
@@ -20,24 +20,23 @@ class CachedFunction(object):
 
     """
     def __init__(self, func, args_to_str=None):
-        # TODO callable objects?
-        if ismethod(func):
-            # cases like CachedFunction(obj.method)
-            self.__self__ = func.__self__
-            self.im_class = isclass(func.__self__) and func.__self__ or func.im_class
+        # TODO cache callable objects?
+        if not isfunction(func):
+            if isinstance(func, (classmethod, staticmethod)):
+                # we don't need original class/static method objects
+                # use what's needed and let them be GC'ed
+                self._method = type(func)
+                self.__self__ = None
+            elif ismethod(func):
+                # cases like CachedFunction(obj.method)
+                self._method = None
+                self.__self__ = func.__self__
+            else:
+                raise TypeError("Don't know how to handle %r" % func)
             func = func.__func__
-        else:
-            # otherwise at init time we don't know the real `self` and class
-            self.__self__ = None
-            self.im_class = None
 
-        if isinstance(func, (classmethod, staticmethod)):
-            # we don't need original class/static method objects
-            # use what's needed and let them be GC'ed
-            self._method = type(func)
-            func = func.__func__
-        else:
-            self._method = None
+        if isgeneratorfunction(func):
+            raise TypeError("Don't know how to handle generator function %r" % func)
 
         self.__func__ = func  # the real callable function
         self.__module__ = func.__module__
@@ -51,6 +50,9 @@ class CachedFunction(object):
     @property
     def im_func(self):
         return self.__func__
+
+    def __getattr__(self, item):
+        return getattr(self.__func__, item)
 
     def __call__(self, *args, **kwargs):
         """Perform lookup into cache or the real function call
@@ -74,10 +76,40 @@ class CachedFunction(object):
         return val
 
     def __get__(self, instance, owner=None):
+        """Descriptor method
+
+        If ``instance`` is None, we're like an unbound or static method of class ``owner``
+        If ``instance`` is a class, we're like a classmethod, ``owner`` is a ``<type 'type'>``
+        If ``instance`` is an instance, we're like an instance method of class ``owner``
+
+        :param instance: None | class | instance
+        :param owner: None | class | type
+        :return: CachedFunction
+        """
+        try:
+            if self._method is staticmethod:
+                try:
+                    self.im_class
+                except AttributeError:
+                    # get the class where the method is originally defined
+                    for cls in owner.__mro__:
+                        if cls.__dict__.get(self.__name__) == self:
+                            self.im_class = owner
+                            break
+                    else:
+                        self.im_class = owner
+                return self
+        except AttributeError:
+            pass
         if owner is None:
             owner = type(instance)
 
-        if instance is not None or (self.im_class is not None and self.im_class is not owner):
+        try:
+            im_class = self.im_class
+        except AttributeError:
+            self.im_class = im_class = owner
+
+        if instance is not None or im_class is not owner:
             # create copy of self:
             # - always for an instance method
             # - if caller class differs from original class
@@ -86,30 +118,29 @@ class CachedFunction(object):
             new_self.im_class = owner
             return new_self
 
-        self.im_class = owner
         return self
 
     def _make_args(self, *args, **kwargs):
         func = self.__func__
-        instance = self.__self__
-        if self._method:
-            method = self._method
-            owner = self.im_class
-            # a class/static method
-            if owner is None:
-                owner = type(instance)
-            if method is classmethod:
-                # print "Testing: classmethod %s.%s" % (owner.__name__, func.__name__)
-                args = (owner, ) + tuple(args)
-            elif method is staticmethod:
-                # print "Testing: staticmethod %s.%s" % (owner.__name__, func.__name__)
-                pass
-        elif instance is not None:
-            # an instance method: append instance in front of args
-            args = (instance, ) + tuple(args)
-        else:
-            # a simple function
+        try:
+            instance = self.__self__
+        except AttributeError:
+            # a generic function
             pass
+        else:
+            method = getattr(self, '_method', None)
+            # class/static method via __get__
+            if method:
+                if method is classmethod:
+                    owner = getattr(self, 'im_class', type(instance))
+                    args = (owner, ) + tuple(args)
+            # instance method via __get__
+            elif instance is not None:
+                args = (instance, ) + tuple(args)
+            else:
+                # [usually, this is the case of unbound methods]
+                # instance is expected to be supplied as args[0]
+                pass
 
         return getcallargs(func, *args, **kwargs)
 
@@ -120,23 +151,33 @@ class CachedFunction(object):
         :return: str
         """
         func = self.__func__
-        owner = self.im_class
-        if owner:
-            spec = get_qualname(owner) + "." + func.__name__
-        else:
+        try:
+            owner = self.im_class
+        except AttributeError:
             spec = get_qualname(func)
+        else:
+            spec = get_qualname(owner) + "." + func.__name__
         if args:
-            s = []
-            for k in sorted(args.keys()):
-                v = args[k]
-                s.append('{0}={1!r}'.format(k, v))
+            s = ['{0}={1!r}'.format(k, v)
+                 for k, v in sorted(args.items())]
             spec += '({0})'.format(','.join(s))
         else:
             spec += '()'
         return spec
 
+    def flush(self, *args, **kwargs):
+        call_args = self._make_args(*args, **kwargs)
+        key = self._make_key(call_args)
+        cache.pop(key, None)
+
 
 def cached_function(f=None):
+    """The decorator
+
+    :param f:
+    :type f: function|classmethod|staticmethod
+    :return: CachedFunction
+    """
     if f is None:
         return lambda f: cached_function(f)
 
