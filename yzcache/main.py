@@ -2,12 +2,9 @@
 # Date: 22.11.15
 from __future__ import absolute_import, unicode_literals
 import copy
-import weakref
 from inspect import getcallargs, ismethod, isclass, isfunction, isgeneratorfunction
-from yzcache.keys import get_qualname
-
-cache = weakref.WeakValueDictionary()
-cache_to = []
+from .keys import get_qualname
+from .backends import backend_manager
 
 
 class CachedResult(object):
@@ -19,7 +16,11 @@ class CachedFunction(object):
     """A class which functions as a function wrapper and method descriptor
 
     """
-    def __init__(self, func, args_to_str=None):
+    backend = None
+
+    def __init__(self, func, args_to_str=None, backend=None, cache_default=CachedResult):
+        self.cache = backend_manager.backends[backend]
+
         # TODO cache callable objects?
         if not isfunction(func):
             if isinstance(func, (classmethod, staticmethod)):
@@ -42,6 +43,7 @@ class CachedFunction(object):
         self.__module__ = func.__module__
         self.__doc__ = func.__doc__
         self.__name__ = func.__name__
+        self.cache_default = cache_default
 
     @property
     def im_self(self):
@@ -64,12 +66,11 @@ class CachedFunction(object):
         func = self.__func__
         callargs = self._make_args(*args, **kwargs)
         key = self._make_key(callargs)
-        val = cache.get(key)
-        if val is None:
+        val = self.cache.get(key, self.cache_default)
+        if val is self.cache_default:
             val = func(**callargs)
             res = CachedResult(val)
-            cache[key] = res
-            cache_to.append(res)  # TODO: timeout
+            self.cache[key] = res
             # self._status = 'cached'
         else:
             val = val.result
@@ -168,7 +169,7 @@ class CachedFunction(object):
     def flush(self, *args, **kwargs):
         call_args = self._make_args(*args, **kwargs)
         key = self._make_key(call_args)
-        cache.pop(key, None)
+        self.cache.delete(key)
 
 
 def cached_function(f=None):

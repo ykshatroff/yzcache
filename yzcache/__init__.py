@@ -1,3 +1,5 @@
 # -*- coding: utf-8 -*-
 # Date: 22.11.15
-__author__ = 'yks'
+from .backends import backend_manager
+
+add_backend = backend_manager.add_backend
