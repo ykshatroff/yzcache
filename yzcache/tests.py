@@ -3,8 +3,9 @@
 from __future__ import unicode_literals
 
 import unittest
+from yzcache import backend_manager
 from yzcache.keys import get_qualname
-from yzcache.main import cached_function, cache
+from yzcache.main import cached_function
 
 
 class UtilsTest(unittest.TestCase):
@@ -52,6 +53,12 @@ class UtilsTest(unittest.TestCase):
 
 
 class CacheTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        backend_manager.add_backend('dict_backend')
+        backend_manager.set_default_backend('dict_backend')
+        cls.cache = backend_manager['dict_backend']
+
     def test_basic(self):
         def f1():
             return 10
@@ -107,9 +114,22 @@ class CacheTest(unittest.TestCase):
 
         d = B.get_static_x
         assert d == A.__dict__['get_static_x']
-        print "Data: ", d._method, d.__self__, d.im_class, A.__dict__['get_static_x']
         args = d._make_args()
         self.assertEqual(B.get_static_x._make_key(args), 'yzcache.tests.A.get_static_x()')
+
+    def test_make_key_encode(self):
+        @cached_function()
+        def _test(arg):
+            pass
+
+        self.assertEqual(_test._make_key({'arg': 'asd'}), _test._make_key({'arg': b'asd'}))
+
+    def test_make_key_none(self):
+        @cached_function(args_to_str={'arg': None})
+        def _test(arg):
+            pass
+
+        self.assertEqual(_test._make_key({'arg': 'asd'}), _test._make_key({}))
 
     def test_cached_method(self):
         class A(object):
@@ -154,14 +174,14 @@ class CacheTest(unittest.TestCase):
         self.assertEqual(outside(1), 21)
 
         counter = {}
-        test_fn = lambda: counter.update({'n': counter.get('n', 0) + 1})
+        test_fn = lambda: counter.update({'n': counter.get('n', 0) + 1}) or 1
         test_fn_cached = cached_function(test_fn)
         key = test_fn_cached._make_key({})
         self.assertEqual(key, 'yzcache.tests.<lambda>()')
 
+        cache = self.cache
         cache.clear()
         test_fn_cached()
-        self.assertEqual(len(cache), 1)
-        self.assertIn(key, cache)
+        self.assertEqual(cache.get(key), 1)
         test_fn_cached()
         self.assertEqual(counter['n'], 1)

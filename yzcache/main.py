@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 # Date: 22.11.15
-from __future__ import absolute_import, unicode_literals
+from __future__ import absolute_import
 import copy
+import six
 from inspect import getcallargs, ismethod, isclass, isfunction, isgeneratorfunction
 from .keys import get_qualname
 from .backends import backend_manager
@@ -13,13 +14,14 @@ class CachedResult(object):
 
 
 class CachedFunction(object):
-    """A class which functions as a function wrapper and method descriptor
+    """A class which functions as a function wrapper and method descriptor.
 
+    It's useful to inherit from this class and redefine `cached_function()` decorator.
     """
     backend = None
 
     def __init__(self, func, args_to_str=None, backend=None, cache_default=CachedResult):
-        self.cache = backend_manager.backends[backend]
+        self.cache = backend_manager[backend]  # raises WrongBackendError
 
         # TODO cache callable objects?
         if not isfunction(func):
@@ -44,6 +46,7 @@ class CachedFunction(object):
         self.__doc__ = func.__doc__
         self.__name__ = func.__name__
         self.cache_default = cache_default
+        self.args_to_str = args_to_str or {}
 
     @property
     def im_self(self):
@@ -69,11 +72,13 @@ class CachedFunction(object):
         val = self.cache.get(key, self.cache_default)
         if val is self.cache_default:
             val = func(**callargs)
-            res = CachedResult(val)
-            self.cache[key] = res
-            # self._status = 'cached'
-        else:
-            val = val.result
+            self.cache.set(key, val)
+            # -- don't know why
+            # res = CachedResult(val)
+            # self.cache.set(key, res)
+        # else:
+        #     val = val.result
+        # --
         return val
 
     def __get__(self, instance, owner=None):
@@ -159,8 +164,21 @@ class CachedFunction(object):
         else:
             spec = get_qualname(owner) + "." + func.__name__
         if args:
-            s = ['{0}={1!r}'.format(k, v)
-                 for k, v in sorted(args.items())]
+            s = []
+            args_to_str = self.args_to_str
+            for k, v in sorted(args.items()):
+                try:
+                    coder = args_to_str[k]
+                except KeyError:
+                    coder = repr
+                    if six.PY2 and isinstance(v, unicode):  # remove `u` in `u''`
+                        v = v.encode('utf-8')
+                    elif six.PY3 and isinstance(v, (bytes, bytearray)):  # remove `b` in `b''`
+                        v = str(v, encoding='utf-8')
+                else:
+                    if coder is None:
+                        continue
+                s.append('{0}={1}'.format(k, coder(v)))
             spec += '({0})'.format(','.join(s))
         else:
             spec += '()'
@@ -172,7 +190,7 @@ class CachedFunction(object):
         self.cache.delete(key)
 
 
-def cached_function(f=None):
+def cached_function(f=None, **kwargs):
     """The decorator
 
     :param f:
@@ -180,6 +198,6 @@ def cached_function(f=None):
     :return: CachedFunction
     """
     if f is None:
-        return lambda f: cached_function(f)
+        return lambda f: cached_function(f, **kwargs)
 
-    return CachedFunction(f)
+    return CachedFunction(f, **kwargs)
