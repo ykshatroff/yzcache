@@ -48,9 +48,10 @@ def make_key(func, owner=None, args=None, args_to_str=None):
                     coder = args_to_str[k]
                 except KeyError:
                     if six.PY2 and isinstance(v, unicode):  # remove `u` in `u''`
-                        v = repr(v.encode('utf-8'))
+                        v = v.encode('utf-8')
                     elif six.PY3 and isinstance(v, (bytes, bytearray)):  # remove `b` in `b''`
-                        v = repr(str(v, encoding='utf-8'))
+                        v = str(v, encoding='utf-8')
+                    v = repr(v)
                 else:
                     if coder is None:
                         continue
