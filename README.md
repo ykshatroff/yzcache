@@ -35,6 +35,30 @@ Support for groups via `CachedResult` wrapper:
 
 some_func => CachedFunction
 
+### Setup
+
+Before any yzcache function is used, define the environment variable `YZCACHE_SETTINGS`: 
+
+    os.environ['YZCACHE_SETTINGS'] = 'some.module.settings'
+
+where `settings` can be an object or a dict with the following attributes/keys:
+
+1. `BACKENDS`: a dict of backends; the key is the backend "name",
+    the value is a dict with `class` and `options` keys. `class` is a string Python path to the backend object,
+    and `options` are the backend-specific options (usually a dict) passed to the constructor in `options` kwarg.
+
+        BACKENDS = { 
+            'default': {
+                'class': 'some.default.backend',
+                'options': {},
+            },
+            'other': {
+                'class': 'some.other.backend',
+                'options': {'host': 'localhost'},
+            }
+        
+
+With django, unless any backends are explicitly specified, the django backend is the default.
 
 ### TODO
 * support for descriptors / class.__call__
