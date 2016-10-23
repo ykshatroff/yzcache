@@ -2,7 +2,12 @@
 # Date: 22.11.15
 from __future__ import absolute_import
 import copy
-from inspect import getcallargs, ismethod, isclass, isfunction, isgeneratorfunction
+from inspect import ismethod, isclass, isfunction, isgeneratorfunction
+try:
+    from inspect import signature
+except ImportError:
+    from funcsigs import signature
+
 from .keys import make_key
 from .backends import backend_manager
 
@@ -50,6 +55,7 @@ class CachedFunction(object):
         self.cache_default = cache_default
         self.args_to_str = args_to_str or {}
         self.groups = []
+        self.signature = signature(func)
 
     @property
     def im_self(self):
@@ -130,7 +136,13 @@ class CachedFunction(object):
         return self
 
     def _make_args(self, *args, **kwargs):
-        func = self.__func__
+        """Build a mapping of argument names to passed values
+
+        :param args: the args passed to the function call
+        :param kwargs: the kwargs passed to the function call
+        :return: OrderedDict of bound arguments
+        :rtype: dict
+        """
         try:
             instance = self.__self__
         except AttributeError:
@@ -151,7 +163,17 @@ class CachedFunction(object):
                 # instance is expected to be supplied as args[0]
                 pass
 
-        return getcallargs(func, *args, **kwargs)
+        callargs = self.signature.bind(*args, **kwargs)
+        try:
+            callargs.apply_defaults()  # Python >= 3.5
+            return callargs.arguments
+        except AttributeError:
+            callargs = callargs.arguments
+            for param_name, param in self.signature.parameters.items():
+                default = param.default
+                if default != param.empty:
+                    callargs.setdefault(param_name, default)
+            return callargs
 
     def _make_key(self, args):
         """Make a string key for the function called with given ``args``

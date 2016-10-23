@@ -29,8 +29,8 @@ def make_key(func, owner=None, args=None, args_to_str=None):
     using a mapping of ``args_to_str`` or ``args_to_str.format(**args)``
 
     :param func: callable
-    :param owner: class
-    :param args: dict of callargs
+    :param owner: the class owning a method's definition
+    :param args: dict of callargs [actually, OrderedDict]
     :param args_to_str: dict, str
     :return: str
     """
@@ -38,19 +38,24 @@ def make_key(func, owner=None, args=None, args_to_str=None):
         spec = get_qualname(func)
     else:
         spec = get_qualname(owner) + "." + func.__name__
+        if args:
+            cls_arg_name, cls_arg_value = args.items()[0]  # remove 'cls' argument: if it is the owner class
+            if cls_arg_value is owner:
+                args = args.copy()
+                args.pop(cls_arg_name)
     if args:
         if isinstance(args_to_str, six.string_types):
             formatted = args_to_str and args_to_str.format(**args)
         else:
             s = []
-            for k, v in sorted(args.items()):
+            for k, v in args.items():  # for any given function, callargs has the same keys
                 try:
                     coder = args_to_str[k]
                 except KeyError:
                     if six.PY2 and isinstance(v, unicode):  # remove `u` in `u''`
                         v = v.encode('utf-8')
                     elif six.PY3 and isinstance(v, (bytes, bytearray)):  # remove `b` in `b''`
-                        v = str(v, encoding='utf-8')
+                        v = six.text_type(v, encoding='utf-8')
                     v = repr(v)
                 else:
                     if coder is None:

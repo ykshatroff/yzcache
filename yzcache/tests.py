@@ -95,6 +95,11 @@ class CacheTest(unittest.TestCase):
                 return self.x
 
             @cached_function
+            @classmethod
+            def get_class_x(cls):
+                return cls.x
+
+            @cached_function
             @staticmethod
             def get_static_x():
                 return A.x
@@ -106,6 +111,13 @@ class CacheTest(unittest.TestCase):
         args = a.get_x._make_args()
         self.assertEqual(args, {'self': a})
         self.assertEqual(a.get_x._make_key(args), 'yzcache.tests.A.get_x(self={!r})'.format(a))
+
+        args = A.get_class_x._make_args()
+        self.assertEqual(A.get_class_x._make_key(args), "yzcache.tests.A.get_class_x()")
+        args = a.get_class_x._make_args()
+        self.assertEqual(a.get_class_x._make_key(args), "yzcache.tests.A.get_class_x()")
+        args = B.get_class_x._make_args()
+        self.assertEqual(B.get_class_x._make_key(args), 'yzcache.tests.B.get_class_x()')
 
         d = a.get_static_x
         args = d._make_args()
