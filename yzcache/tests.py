@@ -2,10 +2,22 @@
 # Date: 22.11.15
 from __future__ import unicode_literals
 
+import os
 import unittest
 from yzcache import backend_manager
+from yzcache.backends import BackendManager, Backend
 from yzcache.keys import get_qualname
 from yzcache.main import cached_function
+
+
+TEST_SETTINGS = {
+    'default': {
+        'class': 'dict_backend',
+    },
+    'other': {
+        'class': 'noop',
+    }
+}
 
 
 class UtilsTest(unittest.TestCase):
@@ -52,12 +64,20 @@ class UtilsTest(unittest.TestCase):
         self.assertEqual(get_qualname(a.ff), 'yzcache.tests.f')
 
 
+class BackendTest(unittest.TestCase):
+    def test_single(self):
+        os.environ['YZCACHE_SETTINGS'] = 'yzcache.tests.TEST_SETTINGS'
+        mgr = BackendManager()
+        self.assertIn('default', mgr.config)
+        self.assertIsInstance(mgr['default'], Backend)
+
+
 class CacheTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         backend_manager.add_backend('dict_backend')
         backend_manager.set_default_backend('dict_backend')
-        cls.cache = backend_manager['dict_backend']
+        cls.cache = backend_manager['dict_backend']  # used in test_cached_method()
 
     def test_basic(self):
         def f1():

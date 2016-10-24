@@ -82,7 +82,10 @@ class CachedFunction(object):
         if val is self.cache_default:
             val = func(**callargs)
             self.cache.set(key, val)
-            # -- don't know why
+            # weakref-like API:
+            #   result_obj = cached_fn(args)
+            #   result = result_obj()
+            #   result_info = result_obj.info()
             # res = CachedResult(val)
             # self.cache.set(key, res)
         # else:
