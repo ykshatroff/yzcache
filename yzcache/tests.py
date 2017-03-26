@@ -3,6 +3,7 @@
 from __future__ import unicode_literals
 
 import os
+import six
 import unittest
 from yzcache import backend_manager
 from yzcache.backends import BackendManager, Backend
@@ -20,34 +21,42 @@ TEST_SETTINGS = {
 }
 
 
+##############################################################
+def f():
+    pass
+
+
+class Desc(object):
+    def __get__(self, obj, instance=None):
+        pass
+
+
+class A(object):
+    desc = Desc()
+
+    def im(self):
+        pass
+
+    @classmethod
+    def cm(cls):
+        pass
+
+    @staticmethod
+    def sm():
+        pass
+
+a = A()
+
+# assignment to class makes f a method
+A.f = f
+
+# assignment to instance doesn't make f a method
+a.ff = f
+###########################################################
+
+
 class UtilsTest(unittest.TestCase):
     def test_basic(self):
-        def f():
-            pass
-
-        class Desc(object):
-            def __get__(self, obj, instance=None):
-                pass
-
-        class A(object):
-            desc = Desc()
-
-            def im(self):
-                pass
-
-            @classmethod
-            def cm(cls):
-                pass
-
-            @staticmethod
-            def sm():
-                pass
-
-        # assignment to class makes f a method
-        A.f = f
-        a = A()
-        # assignment to instance doesn't make f a method
-        a.ff = f
 
         self.assertEqual(get_qualname(f), 'yzcache.tests.f')
         self.assertEqual(get_qualname(A), 'yzcache.tests.A')
@@ -57,11 +66,21 @@ class UtilsTest(unittest.TestCase):
         self.assertEqual(get_qualname(a.cm), 'yzcache.tests.A.cm')
 
         self.assertEqual(get_qualname(A.sm), 'yzcache.tests.sm')
-        self.assertEqual(get_qualname(A.im), 'yzcache.tests.A.im')
         self.assertEqual(get_qualname(a.im), 'yzcache.tests.A.im')
-        self.assertEqual(get_qualname(A.f), 'yzcache.tests.A.f')
         self.assertEqual(get_qualname(a.f), 'yzcache.tests.A.f')
         self.assertEqual(get_qualname(a.ff), 'yzcache.tests.f')
+
+    @unittest.skipIf(condition=six.PY3, reason="Not holding on PY3")
+    def test_basic_py2(self):
+        # class attributes are <type instancemethod>
+        self.assertEqual(get_qualname(A.im), 'yzcache.tests.A.im')
+        self.assertEqual(get_qualname(A.f), 'yzcache.tests.A.f')
+
+    @unittest.skipIf(condition=six.PY2, reason="Not holding on PY2")
+    def test_basic_py3(self):
+        # class attributes are functions
+        self.assertEqual(get_qualname(A.im), 'yzcache.tests.im')
+        self.assertEqual(get_qualname(A.f), 'yzcache.tests.f')
 
 
 class BackendTest(unittest.TestCase):

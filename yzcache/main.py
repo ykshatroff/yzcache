@@ -131,7 +131,8 @@ class CachedFunction(object):
             # create copy of self:
             # - always for an instance method
             # - if caller class differs from original class
-            new_self = copy.copy(self)
+            new_self = type(self)(self.__func__)
+            new_self.__dict__.update(self.__dict__)
             new_self.__self__ = instance
             new_self.im_class = owner
             return new_self
